@@ -1,87 +1,74 @@
 #include "monty.h"
+#include "lists.h"
+
+data_t data = DATA_INIT;
 
 /**
- * main - monty interperter
- * @ac: the number of arguments
- * @av: the arguments
- * Return: void
+ * monty - helper function for main function
+ * @args: pointer to struct of arguments from main
+ *
+ * Description: opens and reads from the file
+ * containing the opcodes, and calls the function
+ * that will find the corresponding executing function
  */
-int main(int ac, char *av[])
+void monty(args_t *args)
 {
-	stack_t *stack = NULL;
-	static char *string[1000] = {NULL};
-	int n = 0;
-	FILE *fd;
-	size_t bufsize = 1000;
+	size_t len = 0;
+	int get = 0;
+	void (*code_func)(stack_t **, unsigned int);
 
-	if (ac != 2)
+	if (args->ac != 2)
 	{
-		fprintf(stderr, "USAGE: monty file\n");
+		dprintf(STDERR_FILENO, USAGE);
 		exit(EXIT_FAILURE);
 	}
-	fd = fopen(av[1], "r");
-	if (fd == NULL)
+	data.fptr = fopen(args->av, "r");
+	if (!data.fptr)
 	{
-		fprintf(stderr, "Error: Can't open file %s\n", av[1]);
+		dprintf(STDERR_FILENO, FILE_ERROR, args->av);
 		exit(EXIT_FAILURE);
 	}
-
-
-	for (n = 0; getline(&(string[n]), &bufsize, fd) > 0; n++)
-		;
-	execute(string, stack);
-	free_list(string);
-	fclose(fd);
-	return (0);
-}
-
-/**
- * execute - executes opcodes
- * @string: contents of file
- * @stack: the list
- * Return: void
- */
-
-void execute(char *string[], stack_t *stack)
-{
-	int ln, n, i;
-
-	instruction_t st[] = {
-		{"pall", pall},
-		{"pint", pint},
-		{"add", add},
-		{"swap", swap},
-		{"pop", pop},
-		{"null", NULL}
-	};
-
-	for (ln = 1, n = 0; string[n + 1]; n++, ln++)
+	while (1)
 	{
-		if (_strcmp("push", string[n]))
-			push(&stack, ln, pushint(string[n], ln));
-		else if (_strcmp("nop", string[n]))
-			;
-		else
+		args->line_number++;
+		get = getline(&(data.line), &len, data.fptr);
+		if (get < 0)
+			break;
+		data.words = strtow(data.line);
+		if (data.words[0] == NULL || data.words[0][0] == '#')
 		{
-			i = 0;
-			while (!_strcmp(st[i].opcode, "null"))
-			{
-				if (_strcmp(st[i].opcode, string[n]))
-				{
-					st[i].f(&stack, ln);
-					break;
-				}
-				i++;
-			}
-			if (_strcmp(st[i].opcode, "null") && !_strcmp(string[n], "\n"))
-			{
-				fprintf(stderr, "L%u: unknown instruction %s", ln, string[n]);
-				if (!nlfind(string[n]))
-					fprintf(stderr, "\n");
-				exit(EXIT_FAILURE);
-			}
+			free_all(0);
+			continue;
 		}
+		code_func = get_func(data.words);
+		if (!code_func)
+		{
+			dprintf(STDERR_FILENO, UNKNOWN, args->line_number, data.words[0]);
+			free_all(1);
+			exit(EXIT_FAILURE);
+		}
+		code_func(&(data.stack), args->line_number);
+		free_all(0);
 	}
-	free_stack(stack);
+	free_all(1);
 }
 
+/**
+ * main - entry point for monty bytecode interpreter
+ * @argc: number of arguments
+ * @argv: array of arguments
+ *
+ * Return: EXIT_SUCCESS or EXIT_FAILURE
+ */
+int main(int argc, char *argv[])
+{
+	args_t args;
+
+	args.av = argv[1];
+	args.ac = argc;
+	args.line_number = 0;
+
+	monty(&args);
+
+	return (EXIT_SUCCESS);
+}
